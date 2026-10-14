@@ -1,0 +1,20 @@
+[project]
+enable_telemetry = false
+
+[features]
+unsafe_allow_html = false
+
+[UI]
+name = "Career Agent"
+description = "Personalized career paths, skill roadmaps, and roles to explore."
+default_theme = "light"
+layout = "wide"
+cot = "tool_call"
+alert_style = "modern"
+custom_css = "/public/custom.css?v=3"
+confirm_new_chat = false
+logo_file_url = "/public/logo.svg"
+default_avatar_file_url = "/public/logo.svg"
+
+[meta]
+generated_by = "2.12.0"

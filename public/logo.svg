@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-labelledby="title desc">
+  <title id="title">Career Agent</title>
+  <desc id="desc">A compass mark beside the words Career Agent</desc>
+  <rect width="320" height="96" rx="24" fill="#f5f3eb"/>
+  <g transform="translate(18 16)">
+    <circle cx="32" cy="32" r="28" fill="#1e6b4f"/>
+    <circle cx="32" cy="32" r="21" fill="#dcece4"/>
+    <path d="M42 21 36 36 21 42l6-15 15-6Z" fill="#1e6b4f"/>
+    <circle cx="32" cy="32" r="3.5" fill="#f5f3eb"/>
+  </g>
+  <text x="92" y="43" fill="#17211b" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700">Career</text>
+  <text x="92" y="68" fill="#1e6b4f" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="600">Agent</text>
+</svg>
