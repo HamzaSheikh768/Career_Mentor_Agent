@@ -1,0 +1,10 @@
+.env
+.env.*
+.git
+.venv
+.playwright-cli
+.pytest_cache
+__pycache__
+*.py[cod]
+output
+tests

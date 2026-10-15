@@ -68,7 +68,8 @@ def get_runtime() -> AgentRuntime:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise ConfigurationError(
-            "GEMINI_API_KEY is missing. Add it to the .env file and restart the app."
+            "GEMINI_API_KEY is missing. Add it to the environment variables and "
+            "restart or redeploy the app."
         )
 
     model_name = os.getenv("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
