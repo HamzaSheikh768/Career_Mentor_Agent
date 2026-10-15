@@ -1,7 +1,9 @@
 import unittest
+from unittest.mock import AsyncMock, call, patch
 
 from career_service import (
     CareerGuidance,
+    build_career_guidance,
     format_guidance_markdown,
     normalize_career_title,
     safe_provider_error_message,
@@ -28,6 +30,16 @@ class CareerLogicTests(unittest.TestCase):
         self.assertNotIn(fake_secret, message)
         self.assertIn("couldn’t create your plan", message)
 
+    def test_provider_unavailable_error_has_retry_guidance(self) -> None:
+        class FakeProviderError(Exception):
+            status_code = 503
+
+        message = safe_provider_error_message(FakeProviderError("provider details"))
+
+        self.assertIn("temporarily busy", message)
+        self.assertIn("try again", message)
+        self.assertNotIn("provider details", message)
+
     def test_roadmap_lookup_is_case_insensitive(self) -> None:
         roadmap = lookup_career_roadmap("Data Scientist")
         self.assertIn("Python", roadmap)
@@ -49,6 +61,38 @@ class CareerLogicTests(unittest.TestCase):
         self.assertIn("Data Scientist", output)
         self.assertIn("Skill roadmap", output)
         self.assertIn("Roles to explore", output)
+
+
+class CareerFallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_transient_primary_failure_uses_fallback_model(self) -> None:
+        class FakeProviderError(Exception):
+            status_code = 503
+
+        primary_runtime = object()
+        fallback_runtime = object()
+        expected = CareerGuidance("Data Scientist", "Learn Python", "Data Analyst")
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "GEMINI_MODEL": "gemini-3.8-flash",
+                    "GEMINI_FALLBACK_MODEL": "gemini-3.6-flash",
+                },
+            ),
+            patch("career_service.get_runtime") as get_runtime,
+            patch(
+                "career_service._build_with_runtime", new_callable=AsyncMock
+            ) as build_with_runtime,
+        ):
+            get_runtime.side_effect = [primary_runtime, fallback_runtime]
+            build_with_runtime.side_effect = [FakeProviderError(), expected]
+
+            result = await build_career_guidance("coding and mathematics")
+
+        self.assertEqual(result, expected)
+        self.assertEqual(get_runtime.call_args_list, [call(), call("gemini-3.6-flash")])
+        self.assertEqual(build_with_runtime.await_count, 2)
 
 
 if __name__ == "__main__":

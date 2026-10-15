@@ -15,7 +15,7 @@ if os.name == "nt":
 from agents import Agent, OpenAIChatCompletionsModel, Runner  # noqa: E402
 from agents.run import RunConfig  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-from openai import AsyncOpenAI  # noqa: E402
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI  # noqa: E402
 
 from roadmaps_tools import get_career_roadmap  # noqa: E402
 
@@ -29,9 +29,36 @@ class ConfigurationError(RuntimeError):
     """Raised when a required application setting is missing."""
 
 
+def _error_chain(error: Exception):
+    current = error
+    seen = set()
+
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _provider_status_code(error: Exception) -> int | None:
+    for current in _error_chain(error):
+        status_code = getattr(current, "status_code", None)
+        if isinstance(status_code, int):
+            return status_code
+    return None
+
+
+def _is_transient_provider_error(error: Exception) -> bool:
+    if _provider_status_code(error) in {500, 502, 503, 504}:
+        return True
+    return any(
+        isinstance(current, (APIConnectionError, APITimeoutError, TimeoutError))
+        for current in _error_chain(error)
+    )
+
+
 def safe_provider_error_message(error: Exception) -> str:
     """Return a user-facing provider error without exposing response details."""
-    status_code = getattr(error, "status_code", None)
+    status_code = _provider_status_code(error)
     if status_code in {401, 403}:
         return (
             "The AI service rejected the configured credentials. Replace or reactivate "
@@ -40,6 +67,11 @@ def safe_provider_error_message(error: Exception) -> str:
     if status_code == 429:
         return (
             "The AI service is temporarily rate-limited. Please wait a moment and "
+            "try again."
+        )
+    if _is_transient_provider_error(error):
+        return (
+            "Gemini is temporarily busy or unavailable. Please wait a moment and "
             "try again."
         )
     return (
@@ -63,8 +95,8 @@ class AgentRuntime:
     run_config: RunConfig
 
 
-@lru_cache(maxsize=1)
-def get_runtime() -> AgentRuntime:
+@lru_cache(maxsize=4)
+def get_runtime(model_override: str | None = None) -> AgentRuntime:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise ConfigurationError(
@@ -72,7 +104,8 @@ def get_runtime() -> AgentRuntime:
             "restart or redeploy the app."
         )
 
-    model_name = os.getenv("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    configured_model = os.getenv("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    model_name = (model_override or configured_model).strip() or DEFAULT_MODEL
     client = AsyncOpenAI(api_key=api_key, base_url=GEMINI_BASE_URL)
     model = OpenAIChatCompletionsModel(model=model_name, openai_client=client)
 
@@ -125,13 +158,9 @@ def normalize_career_title(output: str) -> str:
     return title[:80]
 
 
-async def build_career_guidance(interests: str) -> CareerGuidance:
-    """Run the specialist agents and return one cohesive career plan."""
-    cleaned_interests = " ".join(interests.split())
-    if len(cleaned_interests) < 3:
-        raise ValueError("Please describe at least one interest.")
-
-    runtime = get_runtime()
+async def _build_with_runtime(
+    cleaned_interests: str, runtime: AgentRuntime
+) -> CareerGuidance:
     career_result = await Runner.run(
         runtime.career_agent,
         input=f"Student interests: {cleaned_interests}",
@@ -160,6 +189,29 @@ async def build_career_guidance(interests: str) -> CareerGuidance:
         skills=str(skill_result.final_output).strip(),
         jobs=str(job_result.final_output).strip(),
     )
+
+
+async def build_career_guidance(interests: str) -> CareerGuidance:
+    """Run the specialist agents, falling back when Gemini is temporarily busy."""
+    cleaned_interests = " ".join(interests.split())
+    if len(cleaned_interests) < 3:
+        raise ValueError("Please describe at least one interest.")
+
+    primary_model = os.getenv("GEMINI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    fallback_model = (
+        os.getenv("GEMINI_FALLBACK_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    )
+
+    try:
+        return await _build_with_runtime(cleaned_interests, get_runtime())
+    except Exception as error:
+        if not _is_transient_provider_error(error) or fallback_model == primary_model:
+            raise
+
+        return await _build_with_runtime(
+            cleaned_interests,
+            get_runtime(fallback_model),
+        )
 
 
 def format_guidance_markdown(guidance: CareerGuidance) -> str:
