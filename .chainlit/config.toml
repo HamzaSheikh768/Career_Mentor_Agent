@@ -1,5 +1,6 @@
 [project]
 enable_telemetry = false
+transports = ["websocket"]
 
 [features]
 unsafe_allow_html = false

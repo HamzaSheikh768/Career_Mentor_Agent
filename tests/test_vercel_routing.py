@@ -1,4 +1,6 @@
+import tomllib
 import unittest
+from pathlib import Path
 
 from api.index import RestoreOriginalPath
 
@@ -12,6 +14,14 @@ class RecordingAsgiApp:
 
 
 class VercelRoutingTests(unittest.IsolatedAsyncioTestCase):
+    def test_chainlit_uses_websocket_transport(self) -> None:
+        config_path = Path(__file__).resolve().parents[1] / ".chainlit" / "config.toml"
+
+        with config_path.open("rb") as config_file:
+            chainlit_config = tomllib.load(config_file)
+
+        self.assertEqual(chainlit_config["project"]["transports"], ["websocket"])
+
     async def test_restores_public_path_and_preserves_socket_query(self) -> None:
         downstream = RecordingAsgiApp()
         middleware = RestoreOriginalPath(downstream)
